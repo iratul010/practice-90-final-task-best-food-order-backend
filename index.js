@@ -3,9 +3,25 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 const port = 5000;
+const jwt = require('jsonwebtoken');
 app.use(cors());
 app.use(express.json());
-
+// TOKEN
+function tokenCreate(user) {
+  //3 parameeters pass in jwt.sign({1},'2',{3})
+  const token = jwt.sign({ email: user.email }, "secret", { expiresIn: "7d" });
+  return token;
+}
+function verifyToken(req,res,next){
+   const token = req.headers.authorization.split(' ')[1]
+   const verify = jwt.verify(token,'secret');
+   if(!verify){
+    return res.send('Your are not authorized')
+   }
+   req.user= verify.email
+   console.log(verify)
+ next();
+}
 const uri =
   "mongodb+srv://iratul010:ly4TqWqrkDjQ1Ocm@cluster0.lijvlat.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
@@ -21,13 +37,16 @@ async function run() {
   try {
     await client.connect();
     const productDB = client.db("productDB");
-    const foodsCollection = productDB.collection("foodsCollection"); // Fixed method name
+    const foodsCollection = productDB.collection("foodsCollection");
+    //USER----------------
+    const userDB = client.db("userDB");
+    const userCollection = userDB.collection("userCollection");
 
     // Products routes
     //post method for used insertOne method here
     app.post("/foods", async (req, res) => {
       const foodsData = req.body;
-      console.log(foodsData);
+      
       const result = await foodsCollection.insertOne(foodsData);
       res.send(result);
     });
@@ -47,7 +66,7 @@ async function run() {
         const foodData = await foodsCollection.findOne({
           _id: new ObjectId(id),
         });
-        console.log(foodData);
+         
         res.send(foodData);
       } catch (err) {
         console.error("Invalid ID format:", err.message);
@@ -56,7 +75,7 @@ async function run() {
     });
 
     //update data
-    app.patch("/foods/:id", async (req, res) => {
+    app.patch("/foods/:id",verifyToken, async (req, res) => {
       const id = req.params.id;
       const updateData = req.body;
       const result = await foodsCollection.updateOne(
@@ -66,7 +85,25 @@ async function run() {
       res.send(result);
     });
 
+    // USER----------------
+    app.post("/user", async (req, res) => {
+      const user = req.body;
+      const token = tokenCreate(user);
    
+      const isUserExist = await userCollection.findOne({ email: user?.email });
+      console.log(isUserExist);
+      if (!isUserExist?._id) {
+         await userCollection.insertOne(user);
+        return res.send({token});
+      } else {
+        return res.send({
+          status: "success",
+          message: "Login success",
+          token,
+        });
+      }
+    });
+
     //Delete data
     app.delete("/foods/:id", async (req, res) => {
       const id = req.params.id;
